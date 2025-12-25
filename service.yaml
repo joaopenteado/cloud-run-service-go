@@ -1,0 +1,49 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: cloud-run-service-go
+spec:
+  template:
+    metadata:
+      annotations:
+        # Set the maximum number of requests per container instance
+        autoscaling.knative.dev/maxScale: '100'
+        autoscaling.knative.dev/minScale: '0'
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: gcr.io/PROJECT_ID/cloud-run-service-go:latest
+        ports:
+        - name: http1
+          containerPort: 8080
+        env:
+        - name: SERVICE_NAME
+          value: "cloud-run-service-go"
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "info"
+        # Uncomment to enable OpenTelemetry tracing
+        # - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        #   value: "your-otel-collector:4317"
+        resources:
+          limits:
+            cpu: '1'
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /liveness
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
