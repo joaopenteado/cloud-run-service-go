@@ -100,7 +100,9 @@ func TestHelloHandler(t *testing.T) {
 				t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
 			}
 
-			if body := w.Body.String(); body != tt.expected {
+			// Trim trailing newline added by json.Encoder
+			body := strings.TrimSpace(w.Body.String())
+			if body != tt.expected {
 				t.Errorf("expected body %q, got %q", tt.expected, body)
 			}
 		})

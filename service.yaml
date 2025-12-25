@@ -13,6 +13,8 @@ spec:
       containerConcurrency: 80
       timeoutSeconds: 300
       containers:
+      # IMPORTANT: Replace PROJECT_ID with your actual GCP project ID
+      # Example: gcr.io/my-project-123/cloud-run-service-go:latest
       - image: gcr.io/PROJECT_ID/cloud-run-service-go:latest
         ports:
         - name: http1

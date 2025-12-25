@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -217,33 +219,43 @@ func getEnv(key, defaultValue string) string {
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"healthy"}`))
+	if _, err := w.Write([]byte(`{"status":"healthy"}`)); err != nil {
+		log.Error().Err(err).Msg("Failed to write health response")
+	}
 }
 
 func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	// Add any readiness checks here (database connectivity, etc.)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ready"}`))
+	if _, err := w.Write([]byte(`{"status":"ready"}`)); err != nil {
+		log.Error().Err(err).Msg("Failed to write readiness response")
+	}
 }
 
 func livenessHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"alive"}`))
+	if _, err := w.Write([]byte(`{"status":"alive"}`)); err != nil {
+		log.Error().Err(err).Msg("Failed to write liveness response")
+	}
 }
 
 // API handlers
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"message":"Cloud Run Service Go","version":"1.0.0"}`))
+	if _, err := w.Write([]byte(`{"message":"Cloud Run Service Go","version":"1.0.0"}`)); err != nil {
+		log.Error().Err(err).Msg("Failed to write root response")
+	}
 }
 
 func apiRootHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"message":"API v1","endpoints":["/api/v1/hello","/api/v1/echo"]}`))
+	if _, err := w.Write([]byte(`{"message":"API v1","endpoints":["/api/v1/hello","/api/v1/echo"]}`)); err != nil {
+		log.Error().Err(err).Msg("Failed to write API root response")
+	}
 }
 
 func helloHandler(w http.ResponseWriter, r *http.Request) {
@@ -254,9 +266,19 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 	
 	log.Debug().Str("name", name).Msg("Hello endpoint called")
 	
+	// Create response with proper JSON encoding
+	type Response struct {
+		Message string `json:"message"`
+	}
+	response := Response{
+		Message: fmt.Sprintf("Hello, %s!", name),
+	}
+	
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"message":"Hello, %s!"}`, name)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Error().Err(err).Msg("Failed to encode hello response")
+	}
 }
 
 func echoHandler(w http.ResponseWriter, r *http.Request) {
@@ -264,18 +286,11 @@ func echoHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", r.Header.Get("Content-Type"))
 	w.WriteHeader(http.StatusOK)
 	
-	// Copy request body to response
+	// Copy request body to response using io.Copy for efficiency
 	if r.Body != nil {
 		defer r.Body.Close()
-		buf := make([]byte, 4096)
-		for {
-			n, err := r.Body.Read(buf)
-			if n > 0 {
-				w.Write(buf[:n])
-			}
-			if err != nil {
-				break
-			}
+		if _, err := io.Copy(w, r.Body); err != nil {
+			log.Error().Err(err).Msg("Failed to copy request body to response")
 		}
 	}
 }
