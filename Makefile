@@ -1,4 +1,4 @@
-.PHONY: help build test run docker-build docker-run clean
+.PHONY: help build test run docker-build docker-run ko-build ko-run clean
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -25,12 +25,24 @@ run: ## Run the application locally
 	@echo "Starting service..."
 	@go run main.go
 
-docker-build: ## Build Docker image
+ko-build: ## Build container image with ko (local)
+	@echo "Building container image with ko..."
+	@ko build --local --bare .
+
+ko-run: ## Build and run container with ko
+	@echo "Building and running container with ko..."
+	@KO_DOCKER_REPO=ko.local ko run --local --bare .
+
+ko-publish: ## Build and publish container image with ko
+	@echo "Building and publishing container with ko..."
+	@ko build --bare .
+
+docker-build: ## Build Docker image (legacy)
 	@echo "Building Docker image..."
 	@docker build -t cloud-run-service-go:latest .
 	@echo "Docker image built: cloud-run-service-go:latest"
 
-docker-run: ## Run Docker container locally
+docker-run: ## Run Docker container locally (legacy)
 	@echo "Starting Docker container..."
 	@docker run -p 8080:8080 --rm --name cloud-run-service-go \
 		-e ENVIRONMENT=development \

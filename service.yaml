@@ -13,9 +13,10 @@ spec:
       containerConcurrency: 80
       timeoutSeconds: 300
       containers:
-      # IMPORTANT: Replace PROJECT_ID with your actual GCP project ID
-      # Example: gcr.io/my-project-123/cloud-run-service-go:latest
-      - image: gcr.io/PROJECT_ID/cloud-run-service-go:latest
+      # Image built and pushed by ko to GitHub Container Registry
+      # Format: ghcr.io/owner/repo/cloud-run-service-go:tag
+      # Example: ghcr.io/joaopenteado/cloud-run-service-go:latest
+      - image: ghcr.io/GITHUB_OWNER/GITHUB_REPO:latest
         ports:
         - name: http1
           containerPort: 8080

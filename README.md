@@ -8,9 +8,10 @@ Enterprise-grade production-ready Google Cloud Run service template for Go.
 - 📊 **Structured logging** with [zerolog](https://github.com/rs/zerolog)
 - 🔍 **Distributed tracing** with [otelchi](https://github.com/riandyrn/otelchi) and OpenTelemetry
 - 🏥 **Health check endpoints** for Kubernetes/Cloud Run
-- 🔒 **Security best practices** (non-root user, minimal base image)
+- 🔒 **Security best practices** (minimal base image)
 - ⚡ **Graceful shutdown** for zero-downtime deployments
-- 🐳 **Multi-stage Docker build** for minimal image size
+- 🐳 **ko-based builds** - no Dockerfile needed!
+- 🤖 **GitHub Actions CI/CD** - automated testing and deployment
 - 📦 **Production-ready** with timeouts, middleware, and error handling
 
 ## Quick Start
@@ -18,7 +19,7 @@ Enterprise-grade production-ready Google Cloud Run service template for Go.
 ### Prerequisites
 
 - Go 1.21 or later
-- Docker (optional, for containerization)
+- [ko](https://ko.build/) (optional, for local container builds)
 - Google Cloud SDK (optional, for Cloud Run deployment)
 
 ### Local Development
@@ -101,61 +102,127 @@ The service is configured via environment variables:
 | `LOG_LEVEL` | Log level (debug/info/warn/error) | `info` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint | (disabled) |
 
-## Docker
+## Container Images with ko
 
-### Build the image
+This project uses [ko](https://ko.build/) for building and deploying container images. Ko is a fast, simple container image builder for Go applications that doesn't require Docker.
+
+### Install ko
 
 ```bash
-docker build -t cloud-run-service-go:latest .
+# macOS
+brew install ko
+
+# Linux
+go install github.com/google/ko@latest
+
+# Or download binary from https://github.com/ko-build/ko/releases
 ```
 
-Or use the build script:
+### Build locally
+
 ```bash
-chmod +x build.sh
-./build.sh
+# Build and save locally (no registry push)
+ko build --local --bare .
+
+# Or use the Makefile
+make ko-build
 ```
 
-### Run the container locally
+### Build and publish to GitHub Container Registry
 
 ```bash
-docker run -p 8080:8080 \
-  -e ENVIRONMENT=development \
-  -e LOG_LEVEL=debug \
-  cloud-run-service-go:latest
+# Set the registry
+export KO_DOCKER_REPO=ghcr.io/your-github-username/cloud-run-service-go
+
+# Login to GitHub Container Registry
+echo $GITHUB_TOKEN | ko login ghcr.io --username your-github-username --password-stdin
+
+# Build and push
+ko build --bare .
+
+# Or use the Makefile
+make ko-publish
+```
+
+### Run container locally
+
+```bash
+# Build and run locally
+make ko-run
+
+# Or manually
+KO_DOCKER_REPO=ko.local ko run --local --bare .
 ```
 
 ## Deployment to Google Cloud Run
 
-### Using gcloud CLI
+### Automated Deployment with GitHub Actions
 
-1. Build and push the image to Google Container Registry:
+The repository includes GitHub Actions workflows for CI/CD:
+
+- **CI Workflow** (`.github/workflows/ci.yaml`): Runs tests, linting, and builds on every push/PR
+- **Deploy Workflow** (`.github/workflows/deploy.yaml`): Builds with ko, pushes to GHCR, and deploys to Cloud Run on main branch
+
+#### Setup for GitHub Actions Deployment
+
+1. **Enable GitHub Container Registry**:
+   - Go to your repository Settings > Packages
+   - Ensure GHCR is enabled for your repository
+
+2. **Add Google Cloud credentials**:
+   ```bash
+   # Create a service account with Cloud Run permissions
+   gcloud iam service-accounts create cloud-run-deployer \
+     --display-name="Cloud Run Deployer"
+   
+   # Grant necessary permissions
+   gcloud projects add-iam-policy-binding PROJECT_ID \
+     --member="serviceAccount:cloud-run-deployer@PROJECT_ID.iam.gserviceaccount.com" \
+     --role="roles/run.admin"
+   
+   gcloud projects add-iam-policy-binding PROJECT_ID \
+     --member="serviceAccount:cloud-run-deployer@PROJECT_ID.iam.gserviceaccount.com" \
+     --role="roles/iam.serviceAccountUser"
+   
+   # Create and download key
+   gcloud iam service-accounts keys create key.json \
+     --iam-account=cloud-run-deployer@PROJECT_ID.iam.gserviceaccount.com
+   ```
+
+3. **Add secret to GitHub**:
+   - Go to repository Settings > Secrets and variables > Actions
+   - Add new secret: `GCP_SA_KEY` with the content of `key.json`
+
+4. **Push to main branch**: The workflow will automatically build and deploy
+
+### Manual Deployment with ko and gcloud
+
 ```bash
-# Set your project ID
+# Set environment variables
+export KO_DOCKER_REPO=ghcr.io/your-github-username/cloud-run-service-go
 export PROJECT_ID=your-gcp-project-id
+export REGION=us-central1
 
-# Build and tag the image
-docker build -t gcr.io/$PROJECT_ID/cloud-run-service-go:latest .
+# Build and push with ko
+IMAGE=$(ko build --bare .)
 
-# Push to GCR
-docker push gcr.io/$PROJECT_ID/cloud-run-service-go:latest
-```
-
-2. Deploy to Cloud Run:
-```bash
+# Deploy to Cloud Run
 gcloud run deploy cloud-run-service-go \
-  --image gcr.io/$PROJECT_ID/cloud-run-service-go:latest \
-  --platform managed \
-  --region us-central1 \
+  --image=${IMAGE} \
+  --platform=managed \
+  --region=${REGION} \
   --allow-unauthenticated \
-  --set-env-vars SERVICE_NAME=cloud-run-service-go,ENVIRONMENT=production,LOG_LEVEL=info
+  --set-env-vars=SERVICE_NAME=cloud-run-service-go,ENVIRONMENT=production,LOG_LEVEL=info
 ```
 
 ### Using service.yaml
 
-Update `service.yaml` with your project ID, then deploy:
+Update `service.yaml` with your GitHub repository path, then deploy:
 
 ```bash
-gcloud run services replace service.yaml
+# Update the image reference in service.yaml first
+# Then deploy
+gcloud run services replace service.yaml --region=${REGION}
 ```
 
 ## Architecture
@@ -221,8 +288,7 @@ This is essential for zero-downtime deployments on Cloud Run.
 
 ### Best Practices Implemented
 
-- ✅ Non-root user in Docker container
-- ✅ Minimal Alpine-based image
+- ✅ Minimal distroless base images (via ko)
 - ✅ No unnecessary packages or tools
 - ✅ Request timeouts to prevent slowloris attacks
 - ✅ Panic recovery middleware
@@ -240,10 +306,11 @@ This is essential for zero-downtime deployments on Cloud Run.
 
 The service is optimized for Cloud Run:
 
-- **Cold start**: ~500ms with minimal dependencies
+- **Cold start**: ~500ms with minimal dependencies and ko-built images
 - **Memory footprint**: <50MB runtime, <100MB with buffers
 - **Concurrent requests**: Supports 80+ concurrent requests per instance
 - **Throughput**: 1000+ RPS per instance (depending on endpoint complexity)
+- **Image size**: Minimal with ko's distroless base images
 
 ## Development
 
@@ -251,17 +318,23 @@ The service is optimized for Cloud Run:
 
 ```
 .
-├── main.go           # Main application code
-├── main_test.go      # Unit tests
-├── go.mod            # Go module definition
-├── go.sum            # Go module checksums
-├── Dockerfile        # Multi-stage Docker build
-├── .dockerignore     # Docker ignore file
-├── service.yaml      # Cloud Run service configuration
-├── .env.example      # Example environment variables
-├── build.sh          # Build script
-└── README.md         # This file
+├── .github/
+│   └── workflows/       # GitHub Actions CI/CD
+│       ├── ci.yaml      # Test, lint, and build
+│       └── deploy.yaml  # Deploy to Cloud Run
+├── main.go              # Main application code
+├── main_test.go         # Unit tests
+├── go.mod               # Go module definition
+├── go.sum               # Go module checksums
+├── .ko.yaml             # ko build configuration
+├── service.yaml         # Cloud Run service configuration
+├── Makefile             # Development tasks
+├── .env.example         # Example environment variables
+├── .air.toml            # Live reload configuration
+└── README.md            # This file
 ```
+
+Note: The Dockerfile is kept for local Docker builds if needed, but production builds use ko.
 
 ### Adding New Endpoints
 
@@ -270,7 +343,9 @@ The service is optimized for Cloud Run:
 func myHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusOK)
-    w.Write([]byte(`{"message":"success"}`))
+    if _, err := w.Write([]byte(`{"message":"success"}`)); err != nil {
+        log.Error().Err(err).Msg("Failed to write response")
+    }
 }
 ```
 
@@ -292,6 +367,32 @@ Run linter:
 ```bash
 golangci-lint run
 ```
+
+## CI/CD with GitHub Actions
+
+The repository includes two GitHub Actions workflows:
+
+### CI Workflow (`.github/workflows/ci.yaml`)
+
+Runs on every push and pull request:
+- **Test**: Runs all tests with race detection and coverage reporting
+- **Lint**: Runs golangci-lint to ensure code quality
+- **Build**: Builds container image with ko to verify it builds correctly
+
+### Deploy Workflow (`.github/workflows/deploy.yaml`)
+
+Runs on pushes to `main` branch and tags:
+- Builds container image with ko
+- Pushes to GitHub Container Registry (GHCR)
+- Deploys to Google Cloud Run
+
+**Required Secrets:**
+- `GCP_SA_KEY`: JSON key for Google Cloud service account with Cloud Run permissions
+
+**Environment Variables to Configure:**
+- `SERVICE_NAME`: Name of the Cloud Run service (default: `cloud-run-service-go`)
+- `REGION`: GCP region for deployment (default: `us-central1`)
+
 
 ## Monitoring
 
