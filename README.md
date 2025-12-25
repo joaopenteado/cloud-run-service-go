@@ -112,8 +112,8 @@ This project uses [ko](https://ko.build/) for building and deploying container i
 # macOS
 brew install ko
 
-# Linux
-go install github.com/google/ko@latest
+# Linux/Other
+go install github.com/ko-build/ko@latest
 
 # Or download binary from https://github.com/ko-build/ko/releases
 ```
